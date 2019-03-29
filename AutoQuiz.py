@@ -8,8 +8,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC 
 from selenium.common.exceptions import TimeoutException
 import numpy as np
-import re
 import string
+import time
 
 
 '''Scraping text from wikipedia or medium article'''
@@ -29,7 +29,19 @@ try:
 except TimeoutException:
     pass
 
-'''Pinging deepquiz API'''
+article_text = driver.find_element_by_xpath(wiki_xpath).text
+
+'''Processing text from article'''
+article_text = article_text.encode('utf-8')
+article_text = article_text.split()
+
+chunks = [article_text[x:x+5800] for x in range(0, len(article_text), 5800)]
+chunk_strings = [] 
+for i in range(0, len(chunks)):
+    chunk_strings.append(b" ".join(chunks[i]))
+#remember to remove references, if it says \nReferences[edit] then take whatevers after that out
+    
+'''Params for pinging deepquiz API'''
 url = "https://gs4ossx7yj.execute-api.us-east-1.amazonaws.com/dev/text"
 headers = {
     'Content-Type': "text/plain",
@@ -37,25 +49,17 @@ headers = {
     'Postman-Token': "7063f14d-46ba-4715-a4b2-9932a6e16685"
     }
 
-article_text = driver.find_element_by_xpath(wiki_xpath).text
-article_text = article_text.encode('utf-8')
-article_text = article_text.split()
-
-#remember to remove references, if it says \nReferences[edit] then take whatevers after that out
-
+''' Getting respomnse from API in chunks'''
 questions = []
 answers = []
+for info in chunk_strings:
+    response = requests.request("POST", url, data = info, headers = headers) 
+    response_text = json.loads(response.text)    
+    for i in response_text:
+        if i["QuestionType"] != "TRUE_FALSE":
+           questions.append(i["QuestionPrompt"])
+           answers.append(i["CorrectAnswer"])
+    #time.sleep(1), didnt need this for long wiki article, might in the future       
     
-headers = {k: str(v).encode("utf-8") for k, v in headers.items()}
-chunks = [article_text[x:x+5800] for x in range(0, len(article_text), 5800)] 
-
-for word_chunk in chunks:
-    #response = requests.request("POST", url, data = word_chunk, headers = headers) 
-    response = requests.request("POST", url, data = word_chunk, headers = headers) 
-    print(response.text)
-    '''
-    response_text = json.loads(response.text)
-    for i in range(0, len(response_text)):
-        if response_text[i]["QuestionType"] != "TRUE_FALSE":
-           questions.append(response_text[i]["QuestionPrompt"])
-           answers.append(response_text[i]["CorrectAnswer"])'''
+print (questions, answers)
+print (len(questions), len(answers))
